@@ -109,61 +109,57 @@ def dashboard():
 @login_required
 def quartos():
     if request.method == 'POST':
-        try:
-            quarto_id = request.form.get('id', '').strip()
-            numero = request.form.get('numero', '').strip()
-            tipo = request.form.get('tipo', '').strip()
-            preco = request.form.get('preco', '0').strip()
-            status = request.form.get('status', 'Disponivel').strip()
-
-            if not all([numero, tipo, preco]):
-                flash('Preencha todos os campos obrigatórios!')
+        if 'numero' in request.form:  # Criar ou atualizar quarto (validação de campos)
+            numero = request.form.get('numero')
+            tipo = request.form.get('tipo')
+            preco_diaria = float(request.form.get('preco_diaria', 0))
+            status = request.form.get('status', 'Disponivel')
+            
+            if not all([numero, tipo, preco_diaria > 0]):
+                flash('Preencha todos os campos obrigatórios!', 'error')
                 return redirect(url_for('quartos'))
             
-            preco_float = float(preco)
-            if preco_float <= 0:
-                flash('Preço deve ser maior que zero!')
-                return redirect(url_for('quartos'))
-
-            if 'excluir' in request.form:
+            # Verificar se é edição (id presente) ou criação
+            quarto_id = request.form.get('id')
+            if quarto_id:  # Edição
                 quarto = Quarto.query.get_or_404(int(quarto_id))
-                for reserva in quarto.reservas:
-                    if reserva.status == 'Check-in':
-                        quarto.status = 'Disponivel'
-                    db.session.delete(reserva)
-                db.session.delete(quarto)
-                db.session.commit()
-                flash('Quarto excluído com sucesso!')
-                return redirect(url_for('quartos'))
-
-            if not quarto_id:  # Novo
-                if Quarto.query.filter_by(numero=numero).first():
-                    flash('Número de quarto já existe!')
-                    return redirect(url_for('quartos'))
-                novo = Quarto(numero=numero, tipo=tipo, preco_diaria=preco_float, status=status)
-                db.session.add(novo)
-                db.session.commit()
-                flash('Quarto criado com sucesso!')
-            else:  # Editar
-                quarto = Quarto.query.get_or_404(int(quarto_id))
-                if quarto.numero != numero and Quarto.query.filter_by(numero=numero).first():
-                    flash('Número de quarto já existe!')
-                    return redirect(url_for('quartos'))
                 quarto.numero = numero
                 quarto.tipo = tipo
-                quarto.preco_diaria = preco_float
+                quarto.preco_diaria = preco_diaria
                 quarto.status = status
-                db.session.commit()
                 flash('Quarto atualizado com sucesso!')
+            else:  # Criação
+                if Quarto.query.filter_by(numero=numero).first():
+                    flash('Número de quarto já existe!', 'error')
+                    return redirect(url_for('quartos'))
+                novo_quarto = Quarto(numero=numero, tipo=tipo, preco_diaria=preco_diaria, status=status)
+                db.session.add(novo_quarto)
+                flash('Quarto criado com sucesso!')
+            
+            db.session.commit()
+            return redirect(url_for('quartos'))
         
-        except ValueError as e:
-            db.session.rollback()
-            flash(f'Erro nos dados: {str(e)}')
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Erro ao salvar: {str(e)}')
-        return redirect(url_for('quartos'))
+        elif 'excluir' in request.form:  # Excluir quarto (sem validação de campos)
+            quarto_id = request.form.get('id')
+            if not quarto_id:
+                flash('ID do quarto inválido!', 'error')
+                return redirect(url_for('quartos'))
+            
+            quarto = Quarto.query.get_or_404(int(quarto_id))
+            
+            # Verificar se quarto tem reservas ativas (impedir exclusão)
+            reservas_ativas = db.session.query(Reserva).filter_by(quarto_id=quarto.id, status='Cancelada').count()
+            if reservas_ativas > 0:
+                flash('Não é possível excluir quarto com reservas ativas!', 'error')
+                return redirect(url_for('quartos'))
+            
+            # Deletar o quarto
+            db.session.delete(quarto)
+            db.session.commit()
+            flash('Quarto excluído com sucesso!')
+            return redirect(url_for('quartos'))
     
+    # GET: Lista quartos
     quartos_lista = Quarto.query.order_by(Quarto.numero).all()
     return render_template('quartos.html', quartos=quartos_lista)
 
@@ -261,16 +257,24 @@ def reservas():
             flash('Check-out realizado! Ganho registrado no financeiro.')
             return redirect(url_for('reservas'))
         
-        elif 'excluir' in request.form:
+        elif 'excluir' in request.form:  # Agora: Deletar reserva completamente
             reserva_id = request.form.get('id')
             if not reserva_id:
                 flash('ID da reserva inválido!', 'error')
                 return redirect(url_for('reservas'))
             reserva = Reserva.query.get_or_404(int(reserva_id))
-            reserva.status = 'Cancelada'
+            
+            # Verificar se há ganhos associados (evitar órfãos)
+            if reserva.ganho:
+                db.session.delete(reserva.ganho)  # Deleta ganho ligado, se existir
+            
+            # Atualizar status do quarto para Disponivel
             reserva.quarto.status = 'Disponivel'
+            
+            # Deletar a reserva
+            db.session.delete(reserva)
             db.session.commit()
-            flash('Reserva cancelada!')
+            flash('Reserva excluída com sucesso!')
             return redirect(url_for('reservas'))
     
     # GET: Lista reservas
@@ -288,7 +292,6 @@ def reservas():
     
     return render_template('reservas.html', reservas=reservas_lista, quartos=quartos, data_hoje=data_hoje,
                            datas_reservadas=datas_reservadas)
-
 
 @app.route('/financeiro', methods=['GET', 'POST'])
 @login_required
