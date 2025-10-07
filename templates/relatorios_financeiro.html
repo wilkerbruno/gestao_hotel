@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios Financeiros - SGHP{% endblock %}
+
+{% block content %}
+<h2><i class="fas fa-chart-line"></i> Relatórios Financeiros</h2>
+<p class="text-muted">Análise dos últimos 12 meses. <a href="{{ url_for('financeiro') }}">Gerenciar dados</a></p>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">Ganhos vs Gastos por Mês</div>
+            <div class="card-body">
+                <canvas id="chartGanhosGastos"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">Evolução de Lucros</div>
+            <div class="card-body">
+                <canvas id="chartLucros"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">Distribuição de Gastos por Categoria</div>
+            <div class="card-body">
+                <canvas id="chartCategorias"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Dados do backend (serializados como JSON)
+const meses = {{ meses|tojson }};
+const ganhos = {{ ganhos|tojson }};
+const gastos = {{ gastos|tojson }};
+const lucros = {{ lucros|tojson }};
+const categorias = {{ categorias|tojson }};
+const valoresCategorias = {{ valores_categorias|tojson }};
+
+// Gráfico Barras: Ganhos vs Gastos
+const ctx1 = document.getElementById('chartGanhosGastos').getContext('2d');
+new Chart(ctx1, {
+    type: 'bar',
+    data: {
+        labels: meses,
+        datasets: [{
+            label: 'Ganhos (R$)',
+            data: ganhos,
+            backgroundColor: 'rgba(75, 192, 192, 0.6)',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            borderWidth: 1
+        }, {
+            label: 'Gastos (R$)',
+            data: gastos,
+            backgroundColor: 'rgba(255, 99, 132, 0.6)',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        scales: { y: { beginAtZero: true } },
+        responsive: true
+    }
+});
+
+// Gráfico Linha: Lucros
+const ctx2 = document.getElementById('chartLucros').getContext('2d');
+new Chart(ctx2, {
+    type: 'line',
+    data: {
+        labels: meses,
+        datasets: [{
+            label: 'Lucro Mensal (R$)',
+            data: lucros,
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 2,
+            fill: true
+        }]
+    },
+    options: {
+        scales: { y: { beginAtZero: true } },
+        responsive: true
+    }
+});
+
+// Gráfico Pizza: Categorias
+const ctx3 = document.getElementById('chartCategorias').getContext('2d');
+new Chart(ctx3, {
+    type: 'pie',
+    data: {
+        labels: categorias,
+        datasets: [{
+            data: valoresCategorias,
+            backgroundColor: [
+                'rgba(255, 99, 132, 0.8)',
+                'rgba(54, 162, 235, 0.8)',
+                'rgba(255, 205, 86, 0.8)',
+                'rgba(75, 192, 192, 0.8)',
+                'rgba(153, 102, 255, 0.8)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } }
+    }
+});
+</script>
+{% endblock %}

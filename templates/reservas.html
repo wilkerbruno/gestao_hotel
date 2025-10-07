@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Reservas - SGHP{% endblock %}
+
+{% block content %}
+<h2><i class="fas fa-calendar-check"></i> Gestão de Reservas</h2>
+<button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalReserva">+ Nova Reserva</button>
+
+<div class="table-responsive">
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Hóspede</th>
+                <th>Quarto</th>
+                <th>Check-in</th>
+                <th>Check-out</th>
+                <th>Total (R$)</th>
+                <th>Status</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for reserva in reservas %}
+            <tr>
+                <td>{{ reserva.hospede_nome }}</td>
+                <td>{{ reserva.quarto.numero }} ({{ reserva.quarto.tipo }})</td>
+                <td>{{ reserva.data_checkin.strftime('%d/%m/%Y') }}</td>
+                <td>{{ reserva.data_checkout.strftime('%d/%m/%Y') }}</td>
+                <td>{{ "%.2f"|format(reserva.total) }}</td>
+                <td>
+                    <span class="badge {% if reserva.status == 'Confirmada' %}bg-info{% elif reserva.status == 'Check-in' %}bg-warning{% else %}bg-success{% endif %}">
+                        {{ reserva.status }}
+                    </span>
+                </td>
+                <td>
+                    {% if reserva.status == 'Confirmada' %}
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="id" value="{{ reserva.id }}">
+                        <button type="submit" name="checkin" class="btn btn-sm btn-warning">Check-in</button>
+                    </form>
+                    {% elif reserva.status == 'Check-in' %}
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="id" value="{{ reserva.id }}">
+                        <button type="submit" name="checkout" class="btn btn-sm btn-success">Check-out</button>
+                    </form>
+                    {% endif %}
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Cancelar reserva?')">
+                        <input type="hidden" name="id" value="{{ reserva.id }}">
+                        <button type="submit" name="excluir" class="btn btn-sm btn-danger">Excluir</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal para Nova Reserva -->
+<div class="modal fade" id="modalReserva" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Nova Reserva</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Quarto</label>
+                        <select class="form-select" name="quarto_id" id="quartoSelect" required>
+                            <option value="">Selecione um quarto</option>
+                            {% for q in quartos %}
+                            <option value="{{ q.id }}" data-preco="{{ q.preco_diaria }}" data-status="{{ q.status }}">
+                                {{ q.numero }} ({{ q.tipo }}) - R$ {{ "%.2f"|format(q.preco_diaria) }}/dia
+                                <span class="badge ms-1 {% if q.status == 'Disponivel' %}bg-success{% elif q.status == 'Ocupado' %}bg-danger{% else %}bg-warning{% endif %}">
+                                    {{ q.status }}
+                                </span>
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">O sistema verificará disponibilidade nas datas selecionadas.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nome do Hóspede</label>
+                        <input type="text" class="form-control" name="hospede" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Data Check-in</label>
+                        <input type="date" class="form-control" name="data_checkin" id="checkin" required min="{{ data_hoje }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Data Check-out</label>
+                        <input type="date" class="form-control" name="data_checkout" id="checkout" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Total Estimado (R$)</label>
+                        <input type="text" class="form-control" id="totalEstimado" readonly>
+                    </div>
+                    <div id="avisoOverlap" class="alert alert-warning" style="display:none;">
+                        <i class="fas fa-exclamation-triangle"></i> Este quarto pode ter reservas próximas. Verifique após selecionar datas.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">Confirmar Reserva</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

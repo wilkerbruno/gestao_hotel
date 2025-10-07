@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios - SGHP{% endblock %}
+
+{% block content %}
+<h2><i class="fas fa-chart-bar"></i> Relatórios</h2>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">Hóspedes Atuais</div>
+            <div class="card-body">
+                {% if hospedes %}
+                <ul class="list-group">
+                    {% for h in hospedes %}
+                    <li class="list-group-item">
+                        {{ h.hospede_nome }} - Quarto {{ h.quarto.numero }} (até {{ h.data_checkout.strftime('%d/%m/%Y') }})
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p>Nenhum hóspede atual.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">Histórico Recente de Reservas</div>
+            <div class="card-body">
+                {% if historico %}
+                <ul class="list-group">
+                    {% for res in historico %}
+                    <li class="list-group-item">
+                        {{ res.hospede_nome }} - Quarto {{ res.quarto.numero }} - Total: R$ {{ "%.2f"|format(res.total) }} ({{ res.data_checkin.strftime('%d/%m/%Y') }} a {{ res.data_checkout.strftime('%d/%m/%Y') }})
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p>Nenhum histórico.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5>Taxa de Ocupação Atual</h5>
+                <p class="text-muted">Ocupados: {{ occ }} / Total: {{ total }} ({{ "%.1f"|format(taxa) }}%)</p>
+                <small class="text-muted">Baseado em reservas ativas hoje.</small>
+                <!-- Expansão: Adicione Chart.js aqui para gráfico se quiser -->
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">Resumo Financeiro Mensal</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>Ganhos: R$ {{ "%.2f"|format(ganhos_mes) }}</h6>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Gastos: R$ {{ "%.2f"|format(total_gastos) }}</h6>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>Lucro: R$ {{ "%.2f"|format(lucro_mes) }}</h6>
+                    </div>
+                </div>
+                <a href="{{ url_for('relatorios_financeiro') }}" class="btn btn-primary mt-2">Ver Gráficos Detalhados</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

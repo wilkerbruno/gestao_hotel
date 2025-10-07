@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Financeiro - SGHP{% endblock %}
+
+{% block content %}
+<h2><i class="fas fa-dollar-sign"></i> Gerenciamento Financeiro</h2>
+
+<ul class="nav nav-tabs" id="financeiroTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="ganhos-tab" data-bs-toggle="tab" data-bs-target="#ganhos" type="button">Ganhos</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="gastos-mensais-tab" data-bs-toggle="tab" data-bs-target="#gastos-mensais" type="button">Gastos Mensais</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="gastos-avulsos-tab" data-bs-toggle="tab" data-bs-target="#gastos-avulsos" type="button">Gastos Avulsos</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="financeiroTabsContent">
+    <!-- Aba Ganhos -->
+    <div class="tab-pane fade show active" id="ganhos" role="tabpanel">
+        <button class="btn btn-success mb-3 mt-2" data-bs-toggle="modal" data-bs-target="#modalGanho">+ Novo Ganho</button>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead><tr><th>Descrição</th><th>Valor (R$)</th><th>Data</th><th>Reserva</th><th>Ações</th></tr></thead>
+                <tbody>
+                    {% for g in ganhos %}
+                    <tr>
+                        <td>{{ g.descricao }}</td>
+                        <td>{{ "%.2f"|format(g.valor) }}</td>
+                        <td>{{ g.data.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ g.reserva.hospede_nome if g.reserva else 'Manual' }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editarGanho({{ g.id }}, '{{ g.descricao }}', {{ g.valor }}, '{{ g.data.strftime('%Y-%m-%d') }}', {{ g.reserva_id if g.reserva_id else 'null' }})">Editar</button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir?')">
+                                <input type="hidden" name="id" value="{{ g.id }}">
+                                <input type="hidden" name="tipo_excluir" value="ganho">
+                                <button type="submit" name="excluir" class="btn btn-sm btn-danger">Excluir</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Aba Gastos Mensais -->
+    <div class="tab-pane fade" id="gastos-mensais" role="tabpanel">
+        <button class="btn btn-success mb-3 mt-2" data-bs-toggle="modal" data-bs-target="#modalGastoMensal">+ Novo Gasto Mensal</button>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead><tr><th>Mês/Ano</th><th>Categoria</th><th>Valor (R$)</th><th>Descrição</th><th>Ações</th></tr></thead>
+                <tbody>
+                    {% for gm in gastos_mensais %}
+                    <tr>
+                        <td>{{ gm.mes_ano }}</td>
+                        <td>{{ gm.categoria }}</td>
+                        <td>{{ "%.2f"|format(gm.valor) }}</td>
+                        <td>{{ gm.descricao or '' }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editarGastoMensal({{ gm.id }}, '{{ gm.mes_ano }}', '{{ gm.categoria }}', {{ gm.valor }}, '{{ gm.descricao or "" }}')">Editar</button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir?')">
+                                <input type="hidden" name="id" value="{{ gm.id }}">
+                                <input type="hidden" name="tipo_excluir" value="gasto_mensal">
+                                <button type="submit" name="excluir" class="btn btn-sm btn-danger">Excluir</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Aba Gastos Avulsos -->
+    <div class="tab-pane fade" id="gastos-avulsos" role="tabpanel">
+        <button class="btn btn-success mb-3 mt-2" data-bs-toggle="modal" data-bs-target="#modalGastoAvulso">+ Novo Gasto Avulso</button>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead><tr><th>Descrição</th><th>Categoria</th><th>Valor (R$)</th><th>Data</th><th>Ações</th></tr></thead>
+                <tbody>
+                    {% for ga in gastos_avulsos %}
+                    <tr>
+                        <td>{{ ga.descricao }}</td>
+                        <td>{{ ga.categoria }}</td>
+                        <td>{{ "%.2f"|format(ga.valor) }}</td>
+                        <td>{{ ga.data.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editarGastoAvulso({{ ga.id }}, '{{ ga.descricao }}', '{{ ga.categoria }}', {{ ga.valor }}, '{{ ga.data.strftime('%Y-%m-%d') }}')">Editar</button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir?')">
+                                <input type="hidden" name="id" value="{{ ga.id }}">
+                                <input type="hidden" name="tipo_excluir" value="gasto_avulso">
+                                <button type="submit" name="excluir" class="btn btn-sm btn-danger">Excluir</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modais para CRUD -->
+<!-- Modal Ganho -->
+<div class="modal fade" id="modalGanho">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="ganhoTitle">Novo Ganho</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="tipo" value="ganho">
+                    <input type="hidden" name="id" id="ganhoId">
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <input type="text" class="form-control" name="descricao" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor (R$)</label>
+                        <input type="number" class="form-control" name="valor" step="0.01" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Data</label>
+                        <input type="date" class="form-control" name="data" value="{{ data_hoje }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reserva (Opcional)</label>
+                        <select class="form-select" name="reserva_id">
+                            <option value="">Manual</option>
+                            {% for r in reservas %}
+                            <option value="{{ r.id }}">Reserva #{{ r.id }} - {{ r.hospede_nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success" id="btnGanho">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Gasto Mensal -->
+<div class="modal fade" id="modalGastoMensal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-white">
+                <h5 class="modal-title" id="mensalTitle">Novo Gasto Mensal</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="tipo" value="gasto_mensal">
+                    <input type="hidden" name="id" id="mensalId">
+                    <div class="mb-3">
+                        <label class="form-label">Mês/Ano (YYYY-MM)</label>
+                        <input type="month" class="form-control" name="mes_ano" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria</label>
+                        <select class="form-select" name="categoria" required>
+                            {% for cat in categorias %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor (R$)</label>
+                        <input type="number" class="form-control" name="valor" step="0.01" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea class="form-control" name="descricao"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning" id="btnMensal">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Gasto Avulso -->
+<div class="modal fade" id="modalGastoAvulso">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="avulsoTitle">Novo Gasto Avulso</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="tipo" value="gasto_avulso">
+                    <input type="hidden" name="id" id="avulsoId">
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <input type="text" class="form-control" name="descricao" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria</label>
+                        <select class="form-select" name="categoria" required>
+                            {% for cat in categorias %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Valor (R$)</label>
+                        <input type="number" class="form-control" name="valor" step="0.01" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Data</label>
+                        <input type="date" class="form-control" name="data" value="{{ data_hoje }}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger" id="btnAvulso">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Funções para editar (preenche modais)
+function editarGanho(id, desc, valor, data, reservaId) {
+    document.getElementById('ganhoId').value = id;
+    document.querySelector('input[name="descricao"]').value = desc;
+    document.querySelector('input[name="valor"]').value = valor.toFixed(2);
+    document.querySelector('input[name="data"]').value = data;
+    document.querySelector('select[name="reserva_id"]').value = reservaId || '';
+    document.getElementById('ganhoTitle').textContent = 'Editar Ganho';
+    document.getElementById('btnGanho').textContent = 'Atualizar';
+    new bootstrap.Modal(document.getElementById('modalGanho')).show();
+}
+
+function editarGastoMensal(id, mesAno, categoria, valor, desc) {
+    document.getElementById('mensalId').value = id;
+    document.querySelector('input[name="mes_ano"]').value = mesAno;
+    document.querySelector('select[name="categoria"]').value = categoria;
+    document.querySelector('input[name="valor"]').value = valor.toFixed(2);
+    document.querySelector('textarea[name="descricao"]').value = desc;
+    document.getElementById('mensalTitle').textContent = 'Editar Gasto Mensal';
+    document.getElementById('btnMensal').textContent = 'Atualizar';
+    new bootstrap.Modal(document.getElementById('modalGastoMensal')).show();
+}
+
+function editarGastoAvulso(id, desc, categoria, valor, data) {
+    document.getElementById('avulsoId').value = id;
+    document.querySelector('input[name="descricao"]').value = desc;
+    document.querySelector('select[name="categoria"]').value = categoria;
+    document.querySelector('input[name="valor"]').value = valor.toFixed(2);
+    document.querySelector('input[name="data"]').value = data;
+    document.getElementById('avulsoTitle').textContent = 'Editar Gasto Avulso';
+    document.getElementById('btnAvulso').textContent = 'Atualizar';
+    new bootstrap.Modal(document.getElementById('modalGastoAvulso')).show();
+}
+
+// Reset modais ao abrir para novo
+document.querySelectorAll('[data-bs-toggle="modal"]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const modalId = this.getAttribute('data-bs-target').substring(1);
+        const form = document.querySelector(`#${modalId} form`);
+        form.reset();
+        const idField = form.querySelector('input[name="id"]');
+        if (idField) idField.value = '';
+        const title = document.querySelector(`#${modalId} .modal-title`);
+        if (title) title.textContent = title.textContent.replace('Editar', 'Novo');
+        const btnSubmit = document.querySelector(`#${modalId} button[type="submit"]`);
+        if (btnSubmit) btnSubmit.textContent = 'Salvar';
+    });
+});
+</script>
+{% endblock %}

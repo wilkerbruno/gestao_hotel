@@ -1,0 +1,63 @@
+/* Tema Clean e Profissional */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+.btn {
+    border-radius: 5px;
+    font-weight: 500;
+}
+
+.table th {
+    background-color: #e9ecef;
+    border-top: none;
+}
+
+.badge {
+    font-size: 0.8em;
+}
+
+.modal-content {
+    border-radius: 10px;
+}
+
+.alert {
+    border-radius: 5px;
+    border: none;
+}
+
+/* Animações suaves */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsivo para Mobile */
+@media (max-width: 768px) {
+    .container {
+        padding: 0 15px;
+    }
+    .card-body {
+        padding: 1rem;
+    }
+}
