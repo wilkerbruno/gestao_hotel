@@ -49,6 +49,10 @@ with app.app_context():
     # Usuário admin
     user = User(username='admin', password=generate_password_hash('admin123'))
     db.session.add(user)
+
+    # Usuário admin
+    user = User(username='user', password=generate_password_hash('user123'))
+    db.session.add(user)
     
     # Quartos exemplo
     q1 = Quarto(numero='101', tipo='Single', preco_diaria=150.0, status='Disponivel')
