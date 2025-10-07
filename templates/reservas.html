@@ -2,6 +2,29 @@
 
 {% block title %}Reservas - SGHP{% endblock %}
 
+{% block head %}
+    <!-- Flatpickr para calendário com coloração de dias reservados (integração mínima) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        /* Coloração para dias reservados (vermelho destacado, sem alterar design geral) */
+        .flatpickr-day.reservado {
+            background-color: #ffcccc !important;  /* Fundo vermelho claro */
+            color: #cc0000 !important;  /* Texto vermelho escuro */
+            border: 2px solid #ff0000 !important;  /* Borda vermelha para destaque */
+            font-weight: bold;  /* Negrito sutil */
+        }
+        .flatpickr-day.reservado:hover {
+            background-color: #ff9999 !important;  /* Hover mais escuro */
+        }
+        /* Total estimado destacado (verde sutil, como badge) */
+        #totalEstimado {
+            background-color: #d4edda;  /* Fundo verde claro para valor */
+            color: #155724;  /* Texto verde escuro */
+            font-weight: bold;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
 <h2><i class="fas fa-calendar-check"></i> Gestão de Reservas</h2>
 <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalReserva">+ Nova Reserva</button>
@@ -63,11 +86,11 @@
                 <h5 class="modal-title">Nova Reserva</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST">
+            <form method="POST" id="formReserva">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">Quarto</label>
-                        <select class="form-select" name="quarto_id" id="quartoSelect" required>
+                        <select class="form-select" name="quarto_id" id="quartoSelect" required onchange="atualizarPrecoEDatas()">
                             <option value="">Selecione um quarto</option>
                             {% for q in quartos %}
                             <option value="{{ q.id }}" data-preco="{{ q.preco_diaria }}" data-status="{{ q.status }}">
@@ -86,15 +109,15 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Data Check-in</label>
-                        <input type="date" class="form-control" name="data_checkin" id="checkin" required min="{{ data_hoje }}">
+                        <input type="text" class="form-control flatpickr" name="data_checkin" id="checkin" required placeholder="YYYY-MM-DD">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Data Check-out</label>
-                        <input type="date" class="form-control" name="data_checkout" id="checkout" required>
+                        <input type="text" class="form-control flatpickr" name="data_checkout" id="checkout" required placeholder="YYYY-MM-DD">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Total Estimado (R$)</label>
-                        <input type="text" class="form-control" id="totalEstimado" readonly>
+                        <input type="text" class="form-control" id="totalEstimado" readonly value="">
                     </div>
                     <div id="avisoOverlap" class="alert alert-warning" style="display:none;">
                         <i class="fas fa-exclamation-triangle"></i> Este quarto pode ter reservas próximas. Verifique após selecionar datas.
@@ -108,4 +131,148 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+    <!-- Flatpickr JS para calendários com coloração -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        let fpCheckin, fpCheckout;
+        let precoQuarto = 0;
+        let quartoAtual = null;
+        let disabledDates = [];  // Datas reservadas para o quarto
+
+        // Inicializar calendários quando o modal abrir
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('modalReserva');
+            modal.addEventListener('shown.bs.modal', function() {
+                inicializarCalendarios();
+            });
+        });
+
+        function inicializarCalendarios() {
+            const dataHoje = new Date('{{ data_hoje }}');
+            const datasReservadas = {{ datas_reservadas | tojson | safe }};  // Do backend
+
+            // Função para obter datas desabilitadas por quarto
+            function getDisabledDates(quartoId) {
+                const disabled = [];
+                datasReservadas.forEach(res => {
+                    if (res.quarto_id == quartoId) {
+                        let currentDate = new Date(res.checkin);
+                        const endDate = new Date(res.checkout);
+                        while (currentDate < endDate) {
+                            disabled.push(new Date(currentDate));
+                            currentDate.setDate(currentDate.getDate() + 1);
+                        }
+                    }
+                });
+                return disabled;
+            }
+
+            // Flatpickr Check-in
+            fpCheckin = flatpickr("#checkin", {
+                dateFormat: "Y-m-d",
+                minDate: dataHoje,
+                disable: disabledDates,
+                onChange: function(selectedDates) {
+                    if (selectedDates[0]) {
+                        fpCheckout.set('minDate', selectedDates[0]);
+                        calcularTotal();
+                        verificarOverlap();
+                    }
+                },
+                onDayCreate: function(dObj, dStr, fp, dayElem) {
+                    if (disabledDates.some(date => date.toDateString() === dayElem.dateObj.toDateString())) {
+                        dayElem.classList.add('reservado');
+                    }
+                }
+            });
+
+            // Flatpickr Check-out
+            fpCheckout = flatpickr("#checkout", {
+                dateFormat: "Y-m-d",
+                minDate: dataHoje,
+                disable: disabledDates,
+                onChange: function(selectedDates) {
+                    if (selectedDates[0]) {
+                        calcularTotal();
+                        verificarOverlap();
+                    }
+                },
+                onDayCreate: function(dObj, dStr, fp, dayElem) {
+                    if (disabledDates.some(date => date.toDateString() === dayElem.dateObj.toDateString())) {
+                        dayElem.classList.add('reservado');
+                    }
+                }
+            });
+        }
+
+        // Atualizar preço e datas desabilitadas ao selecionar quarto
+        function atualizarPrecoEDatas() {
+            const select = document.getElementById('quartoSelect');
+            const selectedOption = select.options[select.selectedIndex];
+            precoQuarto = parseFloat(selectedOption ? selectedOption.getAttribute('data-preco') || 0 : 0);
+            quartoAtual = select.value;
+
+            // Atualizar datas desabilitadas
+            disabledDates = getDisabledDates(quartoAtual || 0);
+            if (fpCheckin) {
+                fpCheckin.set('disable', disabledDates);
+                fpCheckin.redraw();  // Reaplica coloração
+            }
+            if (fpCheckout) {
+                fpCheckout.set('disable', disabledDates);
+                fpCheckout.redraw();
+            }
+
+            calcularTotal();
+            document.getElementById('avisoOverlap').style.display = 'none';  // Reset aviso
+        }
+
+        // Calcular total estimado
+        function calcularTotal() {
+            const checkin = fpCheckin ? fpCheckin.selectedDates[0] : null;
+            const checkout = fpCheckout ? fpCheckout.selectedDates[0] : null;
+            const totalField = document.getElementById('totalEstimado');
+            if (checkin && checkout && precoQuarto > 0 && quartoAtual) {
+                const dias = (checkout - checkin) / (1000 * 60 * 60 * 24);
+                if (dias > 0) {
+                    const total = dias * precoQuarto;
+                    totalField.value = total.toFixed(2);
+                    return;
+                }
+            }
+            totalField.value = '';
+        }
+
+        // Verificar overlap e mostrar aviso
+        function verificarOverlap() {
+            const checkin = fpCheckin.selectedDates[0];
+            const checkout = fpCheckout.selectedDates[0];
+            const aviso = document.getElementById('avisoOverlap');
+            if (checkin && checkout && disabledDates.length > 0) {
+                const overlap = disabledDates.some(date => {
+                    return date >= checkin && date < checkout;
+                });
+                aviso.style.display = overlap ? 'block' : 'none';
+            } else {
+                aviso.style.display = 'none';
+            }
+        }
+
+        // Validação no submit
+        document.getElementById('formReserva').addEventListener('submit', function(e) {
+            const checkinVal = document.getElementById('checkin').value;
+            const checkoutVal = document.getElementById('checkout').value;
+            if (checkinVal >= checkoutVal) {
+                alert('Data de check-out deve ser posterior ao check-in!');
+                e.preventDefault();
+            }
+            if (!quartoAtual) {
+                alert('Selecione um quarto!');
+                e.preventDefault();
+            }
+        });
+    </script>
 {% endblock %}

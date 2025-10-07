@@ -20,7 +20,7 @@ try:
     db.init_app(app)
     @app.context_processor
     def inject_is_logged_in():
-        return dict(is_logged_in='user_id' in session)
+         return dict(is_logged_in='user_id' in session)
     print("DB inicializada com sucesso.")  # Debug
 except Exception as e:
     print(f"Erro na DB: {e}")  # Debug: Mostra se conexão falha no startup
@@ -46,12 +46,18 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password, password):
-            session['user_id'] = user.id
-            flash('Login realizado com sucesso!')
+        
+        # Credenciais fixas (exemplo; substitua por DB se quiser)
+        if username == 'admin' and password == 'admin123':
+            session['user_id'] = 1  # Define session só após sucesso
+            session['username'] = username
+            flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('dashboard'))
-        flash('Credenciais inválidas.')
+        else:
+            flash('Credenciais inválidas!', 'error')
+    
+    # GET: Limpa session para garantir is_logged_in=False (sem menu)
+    session.clear()  # Força logout se acessou diretamente
     return render_template('login.html')
 
 @app.route('/logout')
@@ -164,105 +170,125 @@ def quartos():
 @app.route('/reservas', methods=['GET', 'POST'])
 @login_required
 def reservas():
-    if request.method == 'POST':
-        try:
-            if 'checkin' in request.form:
-                reserva_id = request.form.get('id')
-                if not reserva_id:
-                    flash('ID da reserva inválido!')
-                    return redirect(url_for('reservas'))
-                reserva = Reserva.query.get_or_404(int(reserva_id))
-                reserva.status = 'Check-in'
-                reserva.quarto.status = 'Ocupado'
-                db.session.commit()
-                flash('Check-in realizado!')
-                return redirect(url_for('reservas'))
-            
-            elif 'checkout' in request.form:
-                reserva_id = request.form.get('id')
-                if not reserva_id:
-                    flash('ID da reserva inválido!')
-                    return redirect(url_for('reservas'))
-                reserva = Reserva.query.get_or_404(int(reserva_id))
-                reserva.status = 'Check-out'
-                reserva.quarto.status = 'Disponivel'
-                
-                # Inserção automática de ganho no financeiro (se não existir)
-                if not reserva.ganho:  # Verifica duplicata via relacionamento
-                    novo_ganho = Ganho(
-                        descricao=f'Check-out Reserva #{reserva.id} - {reserva.hospede_nome}',
-                        valor=reserva.total,  # Usa o total da reserva (diárias × preço)
-                        data=datetime.now(),  # Data do check-out
-                        reserva_id=reserva.id  # Link para rastrear
-                    )
-                    db.session.add(novo_ganho)
-                    print(f"Debug: Ganho automático adicionado para reserva #{reserva.id} - Valor: R$ {reserva.total}")  # Log opcional para debug
-                
-                db.session.commit()
-                flash('Check-out realizado! Ganho registrado no financeiro.')
-                return redirect(url_for('reservas'))
-            
-            elif 'excluir' in request.form:
-                reserva_id = request.form.get('id')
-                if not reserva_id:
-                    flash('ID da reserva inválido!')
-                    return redirect(url_for('reservas'))
-                reserva = Reserva.query.get_or_404(int(reserva_id))
-                if reserva.status == 'Check-in':
-                    reserva.quarto.status = 'Disponivel'
-                db.session.delete(reserva)
-                db.session.commit()
-                flash('Reserva cancelada!')
-                return redirect(url_for('reservas'))
-            
-            else:  # Nova reserva
-                quarto_id_str = request.form.get('quarto_id')
-                hospede = request.form.get('hospede', '').strip()
-                data_checkin_str = request.form.get('data_checkin')
-                data_checkout_str = request.form.get('data_checkout')
-                
-                if not all([quarto_id_str, hospede, data_checkin_str, data_checkout_str]):
-                    flash('Preencha todos os campos obrigatórios!')
-                    return redirect(url_for('reservas'))
-                
-                quarto_id = int(quarto_id_str)
-                quarto = Quarto.query.get_or_404(quarto_id)
-                checkin = datetime.strptime(data_checkin_str, '%Y-%m-%d')
-                checkout = datetime.strptime(data_checkout_str, '%Y-%m-%d')
-                if checkout <= checkin:
-                    flash('Data de check-out deve ser posterior ao check-in!')
-                    return redirect(url_for('reservas'))
-                dias = (checkout - checkin).days
-                if dias <= 0:
-                    flash('Período de reserva inválido!')
-                    return redirect(url_for('reservas'))
-                
-                # Overlap
-                reservas_existentes = Reserva.query.filter_by(quarto_id=quarto_id).all()
-                for res in reservas_existentes:
-                    if res.has_overlap(checkin, checkout):
-                        flash(f'Quarto {quarto.numero} já reservado no período {res.data_checkin.strftime("%d/%m/%Y")} a {res.data_checkout.strftime("%d/%m/%Y")}! Escolha outras datas.')
-                        return redirect(url_for('reservas'))
-                
-                total = dias * quarto.preco_diaria
-                nova = Reserva(quarto_id=quarto_id, hospede_nome=hospede, data_checkin=checkin, data_checkout=checkout, total=total, status='Confirmada')
-                db.session.add(nova)
-                db.session.commit()
-                flash('Reserva confirmada com sucesso!')
-                return redirect(url_for('reservas'))
-        
-        except ValueError as e:
-            db.session.rollback()
-            flash(f'Erro nos dados: {str(e)}')
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Erro ao processar: {str(e)}')
-        return redirect(url_for('reservas'))
+    quartos = Quarto.query.all()  # Lista de quartos para select
+    data_hoje = datetime.now().date()  # Data de hoje para minDate no calendário
     
+    if request.method == 'POST':
+        if 'quarto_id' in request.form:  # Nova reserva
+            quarto_id = request.form.get('quarto_id')
+            hospede_nome = request.form.get('hospede')
+            data_checkin = datetime.strptime(request.form.get('data_checkin'), '%Y-%m-%d').date()
+            data_checkout = datetime.strptime(request.form.get('data_checkout'), '%Y-%m-%d').date()
+            
+            if not all([quarto_id, hospede_nome, data_checkin, data_checkout]):
+                flash('Preencha todos os campos!', 'error')
+                return redirect(url_for('reservas'))
+            
+            quarto = Quarto.query.get_or_404(quarto_id)
+            if quarto.status != 'Disponivel':
+                flash('Quarto não disponível!', 'error')
+                return redirect(url_for('reservas'))
+            
+            if data_checkin >= data_checkout:
+                flash('Data de check-out deve ser posterior ao check-in!', 'error')
+                return redirect(url_for('reservas'))
+            
+            # Verificar overlap com reservas existentes
+            overlap = db.session.query(Reserva).filter(
+                Reserva.quarto_id == quarto_id,
+                Reserva.status != 'Cancelada',
+                Reserva.data_checkin < data_checkout,
+                Reserva.data_checkout > data_checkin
+            ).first()
+            if overlap:
+                flash('Datas conflitam com reserva existente!', 'error')
+                return redirect(url_for('reservas'))
+            
+            # Calcular total (diárias * preço)
+            diarias = (data_checkout - data_checkin).days
+            total = diarias * quarto.preco_diaria
+            
+            nova_reserva = Reserva(
+                quarto_id=quarto_id,
+                hospede_nome=hospede_nome,
+                data_checkin=data_checkin,
+                data_checkout=data_checkout,
+                total=total,
+                status='Confirmada'
+            )
+            quarto.status = 'Reservado'
+            db.session.add(nova_reserva)
+            db.session.commit()
+            flash('Reserva confirmada com sucesso!')
+            return redirect(url_for('reservas'))
+        
+        elif 'checkin' in request.form:
+            reserva_id = request.form.get('id')
+            if not reserva_id:
+                flash('ID da reserva inválido!', 'error')
+                return redirect(url_for('reservas'))
+            reserva = Reserva.query.get_or_404(int(reserva_id))
+            if reserva.status != 'Confirmada':
+                flash('Apenas reservas confirmadas podem fazer check-in!', 'error')
+                return redirect(url_for('reservas'))
+            reserva.status = 'Check-in'
+            reserva.quarto.status = 'Ocupado'
+            db.session.commit()
+            flash('Check-in realizado!')
+            return redirect(url_for('reservas'))
+        
+        elif 'checkout' in request.form:
+            reserva_id = request.form.get('id')
+            if not reserva_id:
+                flash('ID da reserva inválido!', 'error')
+                return redirect(url_for('reservas'))
+            reserva = Reserva.query.get_or_404(int(reserva_id))
+            reserva.status = 'Check-out'
+            reserva.quarto.status = 'Disponivel'
+            
+            # Inserção automática de ganho no financeiro (se não existir)
+            if not reserva.ganho:  # Verifica duplicata via relacionamento
+                novo_ganho = Ganho(
+                    descricao=f'Check-out Reserva #{reserva.id} - {reserva.hospede_nome}',
+                    valor=reserva.total,  # Usa o total da reserva
+                    data=datetime.now(),
+                    reserva_id=reserva.id  # Link para rastrear
+                )
+                db.session.add(novo_ganho)
+                print(f"Debug: Ganho automático adicionado para reserva #{reserva.id} - Valor: R$ {reserva.total}")  # Log opcional
+            
+            db.session.commit()
+            flash('Check-out realizado! Ganho registrado no financeiro.')
+            return redirect(url_for('reservas'))
+        
+        elif 'excluir' in request.form:
+            reserva_id = request.form.get('id')
+            if not reserva_id:
+                flash('ID da reserva inválido!', 'error')
+                return redirect(url_for('reservas'))
+            reserva = Reserva.query.get_or_404(int(reserva_id))
+            reserva.status = 'Cancelada'
+            reserva.quarto.status = 'Disponivel'
+            db.session.commit()
+            flash('Reserva cancelada!')
+            return redirect(url_for('reservas'))
+    
+    # GET: Lista reservas
     reservas_lista = Reserva.query.order_by(Reserva.data_checkin.desc()).all()
-    quartos = Quarto.query.all()
-    data_hoje = datetime.now().strftime('%Y-%m-%d')
-    return render_template('reservas.html', reservas=reservas_lista, quartos=quartos, data_hoje=data_hoje)
+    
+    # Preparar datas reservadas para calendário JS (por quarto)
+    datas_reservadas = []
+    for res in reservas_lista:
+        if res.status != 'Cancelada':  # Só reservas ativas
+            datas_reservadas.append({
+                'quarto_id': res.quarto_id,
+                'checkin': res.data_checkin.strftime('%Y-%m-%d'),
+                'checkout': res.data_checkout.strftime('%Y-%m-%d')
+            })
+    
+    return render_template('reservas.html', reservas=reservas_lista, quartos=quartos, data_hoje=data_hoje,
+                           datas_reservadas=datas_reservadas)
+
 
 @app.route('/financeiro', methods=['GET', 'POST'])
 @login_required
