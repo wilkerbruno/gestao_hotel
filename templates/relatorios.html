@@ -8,36 +8,61 @@
 <div class="row">
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header bg-info text-white">Hóspedes Atuais</div>
+            <div class="card-header bg-info text-white">
+                <i class="fas fa-users"></i> Hóspedes Atuais
+            </div>
             <div class="card-body">
                 {% if hospedes %}
-                <ul class="list-group">
+                <ul class="list-group list-group-flush">
                     {% for h in hospedes %}
                     <li class="list-group-item">
-                        {{ h.hospede_nome }} - Quarto {{ h.quarto.numero }} (até {{ h.data_checkout.strftime('%d/%m/%Y') }})
+                        <strong>{{ h.hospede_nome }}</strong><br>
+                        <small class="text-muted">
+                            {{ h.num_pessoas }} pessoa{{'s' if h.num_pessoas > 1 else ''}}
+                            {% if h.num_criancas > 0 %}({{ h.num_criancas }} criança{{'s' if h.num_criancas > 1 else ''}}){% endif %}<br>
+                            Até {{ h.data_checkout.strftime('%d/%m/%Y') }}
+                        </small>
                     </li>
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p>Nenhum hóspede atual.</p>
+                <div class="alert alert-info m-0">
+                    <i class="fas fa-info-circle"></i> Nenhum hóspede hospedado no momento.
+                </div>
                 {% endif %}
             </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card">
-            <div class="card-header bg-secondary text-white">Histórico Recente de Reservas</div>
+            <div class="card-header bg-secondary text-white">
+                <i class="fas fa-history"></i> Histórico Recente de Reservas
+            </div>
             <div class="card-body">
                 {% if historico %}
-                <ul class="list-group">
+                <ul class="list-group list-group-flush">
                     {% for res in historico %}
                     <li class="list-group-item">
-                        {{ res.hospede_nome }} - Quarto {{ res.quarto.numero }} - Total: R$ {{ "%.2f"|format(res.total) }} ({{ res.data_checkin.strftime('%d/%m/%Y') }} a {{ res.data_checkout.strftime('%d/%m/%Y') }})
+                        <strong>{{ res.hospede_nome }}</strong><br>
+                        <small class="text-muted">
+                            Total: <strong>R$ {{ "%.2f"|format(res.total) }}</strong><br>
+                            {{ res.data_checkin.strftime('%d/%m/%Y') }} a {{ res.data_checkout.strftime('%d/%m/%Y') }}<br>
+                            Status: 
+                            {% if res.status == 'Confirmada' %}
+                                <span class="badge bg-info">Confirmada</span>
+                            {% elif res.status == 'Check-in' %}
+                                <span class="badge bg-warning text-dark">Check-in</span>
+                            {% else %}
+                                <span class="badge bg-success">Check-out</span>
+                            {% endif %}
+                        </small>
                     </li>
                     {% endfor %}
                 </ul>
                 {% else %}
-                <p>Nenhum histórico.</p>
+                <div class="alert alert-info m-0">
+                    <i class="fas fa-info-circle"></i> Nenhum histórico de reservas.
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -47,32 +72,41 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-body">
-                <h5>Taxa de Ocupação Atual</h5>
-                <p class="text-muted">Ocupados: {{ occ }} / Total: {{ total }} ({{ "%.1f"|format(taxa) }}%)</p>
-                <small class="text-muted">Baseado em reservas ativas hoje.</small>
-                <!-- Expansão: Adicione Chart.js aqui para gráfico se quiser -->
+            <div class="card-header bg-secondary text-white">
+                <i class="fas fa-dollar-sign"></i> Resumo Financeiro Mensal
             </div>
-        </div>
-    </div>
-</div>
-<div class="row mt-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-secondary text-white">Resumo Financeiro Mensal</div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-4">
-                        <h6>Ganhos: R$ {{ "%.2f"|format(ganhos_mes) }}</h6>
+                        <div class="card text-center border-success">
+                            <div class="card-body">
+                                <h6 class="card-title">Ganhos</h6>
+                                <h3 class="text-success">R$ {{ "%.2f"|format(ganhos_mes) }}</h3>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-4">
-                        <h6>Gastos: R$ {{ "%.2f"|format(total_gastos) }}</h6>
+                        <div class="card text-center border-danger">
+                            <div class="card-body">
+                                <h6 class="card-title">Gastos</h6>
+                                <h3 class="text-danger">R$ {{ "%.2f"|format(total_gastos) }}</h3>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-4">
-                        <h6>Lucro: R$ {{ "%.2f"|format(lucro_mes) }}</h6>
+                        <div class="card text-center {% if lucro_mes < 0 %}border-danger{% else %}border-success{% endif %}">
+                            <div class="card-body">
+                                <h6 class="card-title">Lucro</h6>
+                                <h3 class="{% if lucro_mes < 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ "%.2f"|format(lucro_mes) }}</h3>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <a href="{{ url_for('relatorios_financeiro') }}" class="btn btn-primary mt-2">Ver Gráficos Detalhados</a>
+                <div class="mt-3">
+                    <a href="{{ url_for('relatorios_financeiro') }}" class="btn btn-primary">
+                        <i class="fas fa-chart-line"></i> Ver Gráficos Detalhados
+                    </a>
+                </div>
             </div>
         </div>
     </div>

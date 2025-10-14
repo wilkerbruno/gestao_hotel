@@ -1,32 +1,55 @@
 import os
 print("Iniciando imports...")  # Debug: Confirma execução
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from models import db, User, Quarto, Reserva, Ganho, GastoMensal, GastoAvulso
+from models import db, User, Reserva, Ganho, GastoMensal, GastoAvulso
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import func, and_
+import json  # Para refeições JSON na rota /reservas
+from dotenv import load_dotenv
+# Driver MySQL para Railway (instale via pip install PyMySQL)
+import pymysql
+pymysql.install_as_MySQLdb()
+load_dotenv()
+
 print("Imports concluídos.")  # Debug
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'sua_chave_secreta_aqui_mude_isso'  # Mude para produção
 
-# Conexão MySQL Railway (verifique se senha/URL está correta)
-DB_URL = 'mysql+pymysql://root:eTuaKzBPnRjjNMxHBYkFEiYkMWTgFRfA@yamanote.proxy.rlwy.net:30781/railway'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DB_URL', DB_URL)
+# Conexão MySQL EasyPanel (nova URL fornecida)
+DB_URL = 'mysql://mysql:f16a8df513be1a4e1b52@easypanel.pontocomdesconto.com.br:33065/divisions_hotel?charset=utf8mb4'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://mysql:f16a8df513be1a4e1b52@easypanel.pontocomdesconto.com.br:33065/divisions_hotel'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True, 'pool_recycle': 300}  # Evita timeouts
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True, 'pool_recycle': 300}  # Evita timeouts em remoto
 
-try:
-    db.init_app(app)
-    @app.context_processor
-    def inject_is_logged_in():
-         return dict(is_logged_in='user_id' in session)
-    print("DB inicializada com sucesso.")  # Debug
-except Exception as e:
-    print(f"Erro na DB: {e}")  # Debug: Mostra se conexão falha no startup
+# Inicialização do DB (fora do try para sempre executar)
+db.init_app(app)
 
-# Categorias fixas
+# Filtro customizado para JSON no Jinja2
+@app.template_filter('from_json')
+def from_json_filter(value):
+    """Converte string JSON para objeto Python"""
+    if not value:
+        return []
+    try:
+        return json.loads(value)
+    except:
+        return []
+
+# Contexto para templates: Verifica se usuário está logado (False no login)
+@app.context_processor
+def inject_is_logged_in():
+    return dict(is_logged_in='user_id' in session)
+
+# Teste de conexão será feito no startup dentro do app_context
+
+
+# Categorias e preços fixos
 CATEGORIAS_GASTOS = ['Manutenção', 'Suprimentos', 'Salários', 'Aluguel', 'Outros']
+PRECO_ADULTO = 150.0
+PRECO_CRIANCA = 80.0
+PRECOS_REFEICOES = {'cafe': 20.0, 'almoco': 30.0, 'janta': 25.0}
 
 def login_required(f):
     def wrap(*args, **kwargs):
@@ -70,19 +93,18 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    total_quartos = Quarto.query.count()
     hoje = datetime.now()
-    ocupados = db.session.query(Quarto.id).join(Reserva).filter(
+    
+    # Contagem de reservas ativas (estabelecimento ocupado se houver reservas ativas)
+    reservas_ativas = db.session.query(Reserva).filter(
         Reserva.data_checkin <= hoje,
         Reserva.data_checkout > hoje,
-        Reserva.status != 'Check-out'
-    ).distinct().count()
-    disponiveis = total_quartos - ocupados
-    reservas_hoje = db.session.query(Reserva).filter(
-        Reserva.data_checkin <= hoje,
-        Reserva.data_checkout > hoje,
-        Reserva.status != 'Check-out'
+        Reserva.status.in_(['Confirmada', 'Check-in'])
     ).count()
+    
+    # Status do estabelecimento (ocupado ou disponível)
+    ocupado = 1 if reservas_ativas > 0 else 0
+    disponivel = 0 if reservas_ativas > 0 else 1
     
     # Resumo Financeiro (MySQL date_format)
     mes_atual = hoje.strftime('%Y-%m')
@@ -102,122 +124,82 @@ def dashboard():
         print(f"Debug Dashboard: {e}")  # Log sem flash para não poluir
         ganhos_mes, total_gastos, lucro_mes = 0, 0, 0
     
-    return render_template('dashboard.html', total=total_quartos, disp=disponiveis, occ=ocupados, res=reservas_hoje,
-                           ganhos_mes=ganhos_mes, total_gastos=total_gastos, lucro_mes=lucro_mes)
-
-@app.route('/quartos', methods=['GET', 'POST'])
-@login_required
-def quartos():
-    if request.method == 'POST':
-        if 'numero' in request.form:  # Criar ou atualizar quarto (validação de campos)
-            numero = request.form.get('numero')
-            tipo = request.form.get('tipo')
-            preco_diaria = float(request.form.get('preco_diaria', 0))
-            status = request.form.get('status', 'Disponivel')
-            
-            if not all([numero, tipo, preco_diaria > 0]):
-                flash('Preencha todos os campos obrigatórios!', 'error')
-                return redirect(url_for('quartos'))
-            
-            # Verificar se é edição (id presente) ou criação
-            quarto_id = request.form.get('id')
-            if quarto_id:  # Edição
-                quarto = Quarto.query.get_or_404(int(quarto_id))
-                quarto.numero = numero
-                quarto.tipo = tipo
-                quarto.preco_diaria = preco_diaria
-                quarto.status = status
-                flash('Quarto atualizado com sucesso!')
-            else:  # Criação
-                if Quarto.query.filter_by(numero=numero).first():
-                    flash('Número de quarto já existe!', 'error')
-                    return redirect(url_for('quartos'))
-                novo_quarto = Quarto(numero=numero, tipo=tipo, preco_diaria=preco_diaria, status=status)
-                db.session.add(novo_quarto)
-                flash('Quarto criado com sucesso!')
-            
-            db.session.commit()
-            return redirect(url_for('quartos'))
-        
-        elif 'excluir' in request.form:  # Excluir quarto (sem validação de campos)
-            quarto_id = request.form.get('id')
-            if not quarto_id:
-                flash('ID do quarto inválido!', 'error')
-                return redirect(url_for('quartos'))
-            
-            quarto = Quarto.query.get_or_404(int(quarto_id))
-            
-            # Verificar se quarto tem reservas ativas (impedir exclusão)
-            reservas_ativas = db.session.query(Reserva).filter_by(quarto_id=quarto.id, status='Cancelada').count()
-            if reservas_ativas > 0:
-                flash('Não é possível excluir quarto com reservas ativas!', 'error')
-                return redirect(url_for('quartos'))
-            
-            # Deletar o quarto
-            db.session.delete(quarto)
-            db.session.commit()
-            flash('Quarto excluído com sucesso!')
-            return redirect(url_for('quartos'))
-    
-    # GET: Lista quartos
-    quartos_lista = Quarto.query.order_by(Quarto.numero).all()
-    return render_template('quartos.html', quartos=quartos_lista)
+    return render_template('dashboard.html', 
+                           total=1,  # Estabelecimento inteiro = 1 unidade
+                           disp=disponivel, 
+                           occ=ocupado, 
+                           res=reservas_ativas,
+                           ganhos_mes=ganhos_mes, 
+                           total_gastos=total_gastos, 
+                           lucro_mes=lucro_mes)
 
 @app.route('/reservas', methods=['GET', 'POST'])
 @login_required
 def reservas():
-    quartos = Quarto.query.all()  # Lista de quartos para select
     data_hoje = datetime.now().date()  # Data de hoje para minDate no calendário
     
     if request.method == 'POST':
-        if 'quarto_id' in request.form:  # Nova reserva
-            quarto_id = request.form.get('quarto_id')
+        if 'hospede' in request.form:  # Nova reserva
             hospede_nome = request.form.get('hospede')
+            num_pessoas = int(request.form.get('num_pessoas', 0))
+            num_criancas = int(request.form.get('num_criancas', 0))
+            refeicoes_str = request.form.get('refeicoes')  # JSON string do JS
             data_checkin = datetime.strptime(request.form.get('data_checkin'), '%Y-%m-%d').date()
             data_checkout = datetime.strptime(request.form.get('data_checkout'), '%Y-%m-%d').date()
             
-            if not all([quarto_id, hospede_nome, data_checkin, data_checkout]):
-                flash('Preencha todos os campos!', 'error')
+            if not all([hospede_nome, num_pessoas > 0, data_checkin, data_checkout]):
+                flash('Preencha todos os campos obrigatórios (pessoas > 0)!', 'error')
                 return redirect(url_for('reservas'))
             
-            quarto = Quarto.query.get_or_404(quarto_id)
-            if quarto.status != 'Disponivel':
-                flash('Quarto não disponível!', 'error')
+            if num_criancas > num_pessoas:
+                flash('Número de crianças não pode exceder total de pessoas!', 'error')
                 return redirect(url_for('reservas'))
             
             if data_checkin >= data_checkout:
                 flash('Data de check-out deve ser posterior ao check-in!', 'error')
                 return redirect(url_for('reservas'))
             
-            # Verificar overlap com reservas existentes
+            # Verificar overlap geral (estabelecimento inteiro reservado)
             overlap = db.session.query(Reserva).filter(
-                Reserva.quarto_id == quarto_id,
-                Reserva.status != 'Cancelada',
+                Reserva.status.in_(['Confirmada', 'Check-in']),
                 Reserva.data_checkin < data_checkout,
                 Reserva.data_checkout > data_checkin
             ).first()
             if overlap:
-                flash('Datas conflitam com reserva existente!', 'error')
+                flash('Datas conflitam com reserva existente no estabelecimento!', 'error')
                 return redirect(url_for('reservas'))
             
-            # Calcular total (diárias * preço)
+            # Calcular total
             diarias = (data_checkout - data_checkin).days
-            total = diarias * quarto.preco_diaria
+            adultos = num_pessoas - num_criancas
+            total_base = diarias * (adultos * PRECO_ADULTO + num_criancas * PRECO_CRIANCA)
             
+            # Refeições: Parse JSON string e somar
+            total_refeicoes = 0.0
+            if refeicoes_str:
+                refeicoes_list = json.loads(refeicoes_str)
+                custo_refeicoes_por_dia = sum(PRECOS_REFEICOES.get(r, 0) for r in refeicoes_list)
+                total_refeicoes = diarias * custo_refeicoes_por_dia * num_pessoas
+            
+            total = total_base + total_refeicoes
+            
+            # Salvar (refeicoes como string JSON)
             nova_reserva = Reserva(
-                quarto_id=quarto_id,
                 hospede_nome=hospede_nome,
+                num_pessoas=num_pessoas,
+                num_criancas=num_criancas,
+                refeicoes=refeicoes_str,
                 data_checkin=data_checkin,
                 data_checkout=data_checkout,
                 total=total,
                 status='Confirmada'
             )
-            quarto.status = 'Reservado'
             db.session.add(nova_reserva)
             db.session.commit()
             flash('Reserva confirmada com sucesso!')
             return redirect(url_for('reservas'))
         
+        # Check-in
         elif 'checkin' in request.form:
             reserva_id = request.form.get('id')
             if not reserva_id:
@@ -228,11 +210,11 @@ def reservas():
                 flash('Apenas reservas confirmadas podem fazer check-in!', 'error')
                 return redirect(url_for('reservas'))
             reserva.status = 'Check-in'
-            reserva.quarto.status = 'Ocupado'
             db.session.commit()
             flash('Check-in realizado!')
             return redirect(url_for('reservas'))
         
+        # Check-out
         elif 'checkout' in request.form:
             reserva_id = request.form.get('id')
             if not reserva_id:
@@ -240,38 +222,31 @@ def reservas():
                 return redirect(url_for('reservas'))
             reserva = Reserva.query.get_or_404(int(reserva_id))
             reserva.status = 'Check-out'
-            reserva.quarto.status = 'Disponivel'
             
-            # Inserção automática de ganho no financeiro (se não existir)
-            if not reserva.ganho:  # Verifica duplicata via relacionamento
+            # Inserção automática de ganho no financeiro
+            if not reserva.ganho:
                 novo_ganho = Ganho(
-                    descricao=f'Check-out Reserva #{reserva.id} - {reserva.hospede_nome}',
-                    valor=reserva.total,  # Usa o total da reserva
+                    descricao=f'Check-out Reserva #{reserva.id} - {reserva.hospede_nome} ({reserva.num_pessoas} pessoas)',
+                    valor=reserva.total,
                     data=datetime.now(),
-                    reserva_id=reserva.id  # Link para rastrear
+                    reserva_id=reserva.id
                 )
                 db.session.add(novo_ganho)
-                print(f"Debug: Ganho automático adicionado para reserva #{reserva.id} - Valor: R$ {reserva.total}")  # Log opcional
+                print(f"Debug: Ganho automático adicionado para reserva #{reserva.id} - Valor: R$ {reserva.total}")
             
             db.session.commit()
             flash('Check-out realizado! Ganho registrado no financeiro.')
             return redirect(url_for('reservas'))
         
-        elif 'excluir' in request.form:  # Agora: Deletar reserva completamente
+        # Excluir
+        elif 'excluir' in request.form:
             reserva_id = request.form.get('id')
             if not reserva_id:
                 flash('ID da reserva inválido!', 'error')
                 return redirect(url_for('reservas'))
             reserva = Reserva.query.get_or_404(int(reserva_id))
-            
-            # Verificar se há ganhos associados (evitar órfãos)
             if reserva.ganho:
-                db.session.delete(reserva.ganho)  # Deleta ganho ligado, se existir
-            
-            # Atualizar status do quarto para Disponivel
-            reserva.quarto.status = 'Disponivel'
-            
-            # Deletar a reserva
+                db.session.delete(reserva.ganho)
             db.session.delete(reserva)
             db.session.commit()
             flash('Reserva excluída com sucesso!')
@@ -280,18 +255,20 @@ def reservas():
     # GET: Lista reservas
     reservas_lista = Reserva.query.order_by(Reserva.data_checkin.desc()).all()
     
-    # Preparar datas reservadas para calendário JS (por quarto)
+    # Preparar datas reservadas para calendário JS (geral)
     datas_reservadas = []
     for res in reservas_lista:
-        if res.status != 'Cancelada':  # Só reservas ativas
+        if res.status in ['Confirmada', 'Check-in']:
             datas_reservadas.append({
-                'quarto_id': res.quarto_id,
                 'checkin': res.data_checkin.strftime('%Y-%m-%d'),
                 'checkout': res.data_checkout.strftime('%Y-%m-%d')
             })
     
-    return render_template('reservas.html', reservas=reservas_lista, quartos=quartos, data_hoje=data_hoje,
-                           datas_reservadas=datas_reservadas)
+    return render_template('reservas.html', 
+                           reservas=reservas_lista, 
+                           data_hoje=data_hoje,
+                           datas_reservadas=datas_reservadas, 
+                           precos_refeicoes=PRECOS_REFEICOES)
 
 @app.route('/financeiro', methods=['GET', 'POST'])
 @login_required
@@ -373,7 +350,7 @@ def relatorios_financeiro():
         ganhos_por_mes = db.session.query(
             func.date_format(Ganho.data, '%Y-%m').label('mes'),
             func.sum(Ganho.valor).label('total')
-        ).filter(Ganho.data >= data_inicio        ).group_by('mes').order_by('mes').all()
+        ).filter(Ganho.data >= data_inicio).group_by('mes').order_by('mes').all()
         
         # Gastos avulsos por mês
         gastos_avulsos_por_mes = db.session.query(
@@ -437,18 +414,20 @@ def relatorios_financeiro():
 @login_required
 def relatorios():
     hoje = datetime.now()
+    
+    # Hóspedes atuais (reservas ativas)
     hospedes_atuais = Reserva.query.filter(
         Reserva.data_checkin <= hoje,
         Reserva.data_checkout > hoje,
-        Reserva.status != 'Check-out'
+        Reserva.status.in_(['Confirmada', 'Check-in'])
     ).all()
+    
+    # Histórico recente
     historico = Reserva.query.order_by(Reserva.data_checkin.desc()).limit(10).all()
-    total = Quarto.query.count()
-    ocupados = db.session.query(Quarto.id).join(Reserva).filter(
-        Reserva.data_checkin <= hoje,
-        Reserva.data_checkout > hoje,
-        Reserva.status != 'Check-out'
-    ).distinct().count()
+    
+    # Taxa de ocupação (estabelecimento inteiro = 1 unidade)
+    total = 1
+    ocupados = 1 if len(hospedes_atuais) > 0 else 0
     taxa_ocupacao = (ocupados / total * 100) if total > 0 else 0
     
     # Resumo Financeiro (MySQL date_format)
@@ -469,9 +448,30 @@ def relatorios():
         print(f"Debug Relatórios: {e}")
         ganhos_mes, total_gastos, lucro_mes = 0, 0, 0
     
-    return render_template('relatorios.html', hospedes=hospedes_atuais, historico=historico, total=total, occ=ocupados, taxa=taxa_ocupacao,
-                           ganhos_mes=ganhos_mes, total_gastos=total_gastos, lucro_mes=lucro_mes)
+    return render_template('relatorios.html', 
+                           hospedes=hospedes_atuais, 
+                           historico=historico, 
+                           total=total, 
+                           occ=ocupados, 
+                           taxa=taxa_ocupacao,
+                           ganhos_mes=ganhos_mes, 
+                           total_gastos=total_gastos, 
+                           lucro_mes=lucro_mes)
 
 if __name__ == '__main__':
     print("Iniciando servidor Flask...")  # Debug final
+    try:
+        with app.app_context():
+            # Teste de conexão
+            try:
+                db.session.execute("SELECT 1")
+                print("DB conectada com sucesso ao MySQL EasyPanel.")
+            except Exception as e:
+                print(f"Erro na conexão DB: {e}")
+            
+            # Criar tabelas
+            db.create_all()
+            print("Tabelas criadas/verificadas no DB remoto (EasyPanel).")
+    except Exception as e:
+        print(f"Erro ao criar tabelas: {e}. Verifique models.py e conexão. App continua rodando.")
     app.run(debug=True, host='127.0.0.1', port=5000)

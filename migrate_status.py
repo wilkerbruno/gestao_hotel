@@ -2,10 +2,12 @@ from flask import Flask
 from models import db, Quarto, Reserva
 from datetime import datetime
 import os
+import pymysql  # Adicionado para configurar o driver
+pymysql.install_as_MySQLdb()  # Configura pymysql como MySQLdb
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'sua_chave_secreta_aqui_mude_isso'
-DB_URL = 'mysql+pymysql://root:eTuaKzBPnRjjNMxHBYkFEiYkMWTgFRfA@yamanote.proxy.rlwy.net:30781/railway'
+DB_URL = 'mysql+pymysql://mysql:f16a8df513be1a4e1b52@easypanel.pontocomdesconto.com.br:33065/divisions_hotel'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DB_URL', DB_URL)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_pre_ping': True}

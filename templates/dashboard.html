@@ -4,38 +4,15 @@
 
 {% block content %}
 <div class="row mb-4">
-    <!-- Cards de Quartos e Ocupação (side-by-side) -->
-    <div class="col-md-4 mb-3">
-        <div class="card text-center border-primary">
-            <div class="card-body">
-                <i class="fas fa-building fa-3x text-primary mb-2"></i>
-                <h5 class="card-title">Total de Quartos</h5>
-                <h2 class="text-primary">{{ total }}</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-3">
-        <div class="card text-center border-success">
-            <div class="card-body">
-                <i class="fas fa-bed fa-3x text-success mb-2"></i>
-                <h5 class="card-title">Quartos Disponíveis</h5>
-                <h2 class="text-success">{{ disp }}</h2>
-            </div>
-        </div>
-    </div>
     <div class="col-md-4 mb-3">
         <div class="card text-center border-warning">
             <div class="card-body">
                 <i class="fas fa-user-check fa-3x text-warning mb-2"></i>
-                <h5 class="card-title">Reservas Hoje</h5>
+                <h5 class="card-title">Reservas Ativas Hoje</h5>
                 <h2 class="text-warning">{{ res }}</h2>
             </div>
         </div>
     </div>
-</div>
-
-<!-- Cards Financeiros (side-by-side: Ganhos, Gastos, Lucro) -->
-<div class="row mb-4">
     <div class="col-md-4 mb-3">
         <div class="card text-center border-success">
             <div class="card-body">
@@ -54,12 +31,15 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4 mb-3">
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
         <div class="card text-center border-info">
             <div class="card-body">
                 <i class="fas fa-chart-line fa-3x text-info mb-2"></i>
                 <h5 class="card-title">Lucro Mensal</h5>
-                <h2 class="text-info {% if lucro_mes < 0 %}text-danger{% else %}text-success{% endif %}">
+                <h2 class="{% if lucro_mes < 0 %}text-danger{% else %}text-success{% endif %}">
                     R$ {{ "%.2f"|format(lucro_mes) }}
                 </h2>
             </div>
@@ -70,9 +50,10 @@
 <div class="row">
     <div class="col-12">
         <h3>Resumo Rápido</h3>
-        <p class="lead">Bem-vindo ao dashboard! Aqui você gerencia quartos, reservas e finanças do hotel.</p>
-        <a href="{{ url_for('quartos') }}" class="btn btn-primary me-2">Gerenciar Quartos</a>
-        <a href="{{ url_for('financeiro') }}" class="btn btn-success">Ver Financeiro</a>
+        <p class="lead">Bem-vindo ao sistema de gestão de pousada! Aqui você gerencia reservas e finanças.</p>
+        <a href="{{ url_for('reservas') }}" class="btn btn-primary me-2">Gerenciar Reservas</a>
+        <a href="{{ url_for('financeiro') }}" class="btn btn-success me-2">Ver Financeiro</a>
+        <a href="{{ url_for('relatorios') }}" class="btn btn-info">Relatórios</a>
     </div>
 </div>
 {% endblock %}

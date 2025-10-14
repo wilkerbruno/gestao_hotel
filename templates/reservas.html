@@ -3,38 +3,42 @@
 {% block title %}Reservas - SGHP{% endblock %}
 
 {% block head %}
-    <!-- Flatpickr para calendário com coloração de dias reservados (integração mínima) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
-        /* Coloração para dias reservados (vermelho destacado, sem alterar design geral) */
         .flatpickr-day.reservado {
-            background-color: #ffcccc !important;  /* Fundo vermelho claro */
-            color: #cc0000 !important;  /* Texto vermelho escuro */
-            border: 2px solid #ff0000 !important;  /* Borda vermelha para destaque */
-            font-weight: bold;  /* Negrito sutil */
+            background-color: #ffcccc !important;
+            color: #cc0000 !important;
+            border: 2px solid #ff0000 !important;
+            font-weight: bold;
         }
         .flatpickr-day.reservado:hover {
-            background-color: #ff9999 !important;  /* Hover mais escuro */
+            background-color: #ff9999 !important;
         }
-        /* Total estimado destacado (verde sutil, como badge) */
         #totalEstimado {
-            background-color: #d4edda;  /* Fundo verde claro para valor */
-            color: #155724;  /* Texto verde escuro */
+            background-color: #d4edda;
+            color: #155724;
             font-weight: bold;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 1.2em;
+        }
+        .form-check-input:checked {
+            background-color: #198754;
         }
     </style>
 {% endblock %}
 
 {% block content %}
 <h2><i class="fas fa-calendar-check"></i> Gestão de Reservas</h2>
-<button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalReserva">+ Nova Reserva</button>
+<button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalReserva" onclick="limparModalReserva()">+ Nova Reserva</button>
 
 <div class="table-responsive">
-    <table class="table table-striped">
-        <thead>
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
             <tr>
                 <th>Hóspede</th>
-                <th>Quarto</th>
+                <th>Pessoas (Crianças)</th>
+                <th>Refeições</th>
                 <th>Check-in</th>
                 <th>Check-out</th>
                 <th>Total (R$)</th>
@@ -45,234 +49,279 @@
         <tbody>
             {% for reserva in reservas %}
             <tr>
-                <td>{{ reserva.hospede_nome }}</td>
-                <td>{{ reserva.quarto.numero }} ({{ reserva.quarto.tipo }})</td>
+                <td><strong>{{ reserva.hospede_nome }}</strong></td>
+                <td>{{ reserva.num_pessoas }} {% if reserva.num_criancas > 0 %}({{ reserva.num_criancas }} criança{{'s' if reserva.num_criancas > 1 else ''}}){% endif %}</td>
+                <td>
+                    {% if reserva.refeicoes %}
+                        {% set refeicoes_list = reserva.refeicoes | from_json | list %}
+                        <span class="badge bg-info">
+                            {% for r in refeicoes_list %}
+                                {{ r | replace('cafe', 'Café') | replace('almoco', 'Almoço') | replace('janta', 'Janta') }}{% if not loop.last %}<br>{% endif %}
+                            {% endfor %}
+                        </span>
+                    {% else %}
+                        <span class="badge bg-secondary">Sem Refeições</span>
+                    {% endif %}
+                </td>
                 <td>{{ reserva.data_checkin.strftime('%d/%m/%Y') }}</td>
                 <td>{{ reserva.data_checkout.strftime('%d/%m/%Y') }}</td>
-                <td>{{ "%.2f"|format(reserva.total) }}</td>
+                <td><strong>R$ {{ "%.2f"|format(reserva.total) }}</strong></td>
                 <td>
-                    <span class="badge {% if reserva.status == 'Confirmada' %}bg-info{% elif reserva.status == 'Check-in' %}bg-warning{% else %}bg-success{% endif %}">
-                        {{ reserva.status }}
-                    </span>
+                    {% if reserva.status == 'Confirmada' %}
+                        <span class="badge bg-info">Confirmada</span>
+                    {% elif reserva.status == 'Check-in' %}
+                        <span class="badge bg-warning text-dark">Check-in</span>
+                    {% else %}
+                        <span class="badge bg-success">Check-out</span>
+                    {% endif %}
                 </td>
                 <td>
                     {% if reserva.status == 'Confirmada' %}
                     <form method="POST" style="display:inline;">
                         <input type="hidden" name="id" value="{{ reserva.id }}">
-                        <button type="submit" name="checkin" class="btn btn-sm btn-warning">Check-in</button>
+                        <button type="submit" name="checkin" class="btn btn-sm btn-warning" title="Fazer check-in">
+                            <i class="fas fa-sign-in-alt"></i> Check-in
+                        </button>
                     </form>
                     {% elif reserva.status == 'Check-in' %}
                     <form method="POST" style="display:inline;">
                         <input type="hidden" name="id" value="{{ reserva.id }}">
-                        <button type="submit" name="checkout" class="btn btn-sm btn-success">Check-out</button>
+                        <button type="submit" name="checkout" class="btn btn-sm btn-success" title="Fazer check-out">
+                            <i class="fas fa-sign-out-alt"></i> Check-out
+                        </button>
                     </form>
                     {% endif %}
-                    <form method="POST" style="display:inline;" onsubmit="return confirm('Cancelar reserva?')">
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja cancelar esta reserva?')">
                         <input type="hidden" name="id" value="{{ reserva.id }}">
-                        <button type="submit" name="excluir" class="btn btn-sm btn-danger">Excluir</button>
+                        <button type="submit" name="excluir" class="btn btn-sm btn-danger" title="Cancelar reserva">
+                            <i class="fas fa-trash"></i> Cancelar
+                        </button>
                     </form>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    {% if not reservas %}
+    <div class="alert alert-info mt-3">
+        <i class="fas fa-info-circle"></i> Nenhuma reserva cadastrada. <a href="#" data-bs-toggle="modal" data-bs-target="#modalReserva" onclick="limparModalReserva()">Crie uma nova</a>.
+    </div>
+    {% endif %}
 </div>
 
 <!-- Modal para Nova Reserva -->
 <div class="modal fade" id="modalReserva" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title">Nova Reserva</h5>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-calendar-plus"></i> Nova Reserva
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" id="formReserva">
+            <form method="POST" id="formReserva" onsubmit="return validarReserva()">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Quarto</label>
-                        <select class="form-select" name="quarto_id" id="quartoSelect" required onchange="atualizarPrecoEDatas()">
-                            <option value="">Selecione um quarto</option>
-                            {% for q in quartos %}
-                            <option value="{{ q.id }}" data-preco="{{ q.preco_diaria }}" data-status="{{ q.status }}">
-                                {{ q.numero }} ({{ q.tipo }}) - R$ {{ "%.2f"|format(q.preco_diaria) }}/dia
-                                <span class="badge ms-1 {% if q.status == 'Disponivel' %}bg-success{% elif q.status == 'Ocupado' %}bg-danger{% else %}bg-warning{% endif %}">
-                                    {{ q.status }}
-                                </span>
-                            </option>
-                            {% endfor %}
-                        </select>
-                        <small class="text-muted">O sistema verificará disponibilidade nas datas selecionadas.</small>
+                        <label class="form-label"><strong>Nome do Hóspede</strong></label>
+                        <input type="text" class="form-control" name="hospede" id="hospede" required>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Nome do Hóspede</label>
-                        <input type="text" class="form-control" name="hospede" required>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Número de Pessoas</strong></label>
+                            <input type="number" class="form-control" name="num_pessoas" id="num_pessoas" min="1" value="1" required onchange="atualizarTotal()">
+                            <small class="text-muted">Total de hóspedes (adultos + crianças)</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Crianças</strong></label>
+                            <input type="number" class="form-control" name="num_criancas" id="num_criancas" min="0" value="0" onchange="atualizarTotal()">
+                            <small class="text-muted">Número de crianças</small>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Data Check-in</label>
-                        <input type="text" class="form-control flatpickr" name="data_checkin" id="checkin" required placeholder="YYYY-MM-DD">
+
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Check-in</strong></label>
+                            <input type="date" name="data_checkin" id="data_checkin" class="form-control" required onchange="atualizarTotal()">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label"><strong>Check-out</strong></label>
+                            <input type="date" name="data_checkout" id="data_checkout" class="form-control" required onchange="atualizarTotal()">
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Data Check-out</label>
-                        <input type="text" class="form-control flatpickr" name="data_checkout" id="checkout" required placeholder="YYYY-MM-DD">
+
+                    <hr>
+                    
+                    <label><strong>Refeições</strong></label>
+                    <p class="text-muted small">Selecione quais refeições serão incluídas (valores por pessoa por dia):</p>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="refeicao" value="cafe" id="cafe" onchange="atualizarTotal()">
+                        <label class="form-check-label" for="cafe">
+                            ☕ Café da Manhã - <strong>R$ 20,00</strong>
+                        </label>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Total Estimado (R$)</label>
-                        <input type="text" class="form-control" id="totalEstimado" readonly value="">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="refeicao" value="almoco" id="almoco" onchange="atualizarTotal()">
+                        <label class="form-check-label" for="almoco">
+                            🍽️ Almoço - <strong>R$ 30,00</strong>
+                        </label>
                     </div>
-                    <div id="avisoOverlap" class="alert alert-warning" style="display:none;">
-                        <i class="fas fa-exclamation-triangle"></i> Este quarto pode ter reservas próximas. Verifique após selecionar datas.
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="refeicao" value="janta" id="janta" onchange="atualizarTotal()">
+                        <label class="form-check-label" for="janta">
+                            🌙 Janta - <strong>R$ 25,00</strong>
+                        </label>
+                    </div>
+
+                    <hr>
+                    
+                    <div class="alert alert-info">
+                        <strong>Cálculo:</strong>
+                        <div id="detalhesCalculo" class="small mt-2" style="line-height: 1.8;">
+                            <div>Hospedagem: <span id="valor_hospedagem">R$ 0,00</span></div>
+                            <div>Refeições: <span id="valor_refeicoes">R$ 0,00</span></div>
+                            <hr style="margin: 0.5rem 0;">
+                            <div id="totalEstimado">Total Estimado: R$ 0,00</div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success">Confirmar Reserva</button>
+                    <button type="submit" class="btn btn-primary" id="btnSalvarReserva">
+                        <i class="fas fa-save"></i> Salvar Reserva
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-    <!-- Flatpickr JS para calendários com coloração -->
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script>
-        let fpCheckin, fpCheckout;
-        let precoQuarto = 0;
-        let quartoAtual = null;
-        let disabledDates = [];  // Datas reservadas para o quarto
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+const PRECOS_REFEICOES = {{ precos_refeicoes | tojson }};
+const PRECO_ADULTO = 150.0;
+const PRECO_CRIANCA = 80.0;
 
-        // Inicializar calendários quando o modal abrir
-        document.addEventListener('DOMContentLoaded', function() {
-            const modal = document.getElementById('modalReserva');
-            modal.addEventListener('shown.bs.modal', function() {
-                inicializarCalendarios();
-            });
-        });
-
-        function inicializarCalendarios() {
-            const dataHoje = new Date('{{ data_hoje }}');
-            const datasReservadas = {{ datas_reservadas | tojson | safe }};  // Do backend
-
-            // Função para obter datas desabilitadas por quarto
-            function getDisabledDates(quartoId) {
-                const disabled = [];
-                datasReservadas.forEach(res => {
-                    if (res.quarto_id == quartoId) {
-                        let currentDate = new Date(res.checkin);
-                        const endDate = new Date(res.checkout);
-                        while (currentDate < endDate) {
-                            disabled.push(new Date(currentDate));
-                            currentDate.setDate(currentDate.getDate() + 1);
-                        }
+// Inicializar calendários
+document.addEventListener('DOMContentLoaded', function() {
+    const checkinInput = document.getElementById('data_checkin');
+    const checkoutInput = document.getElementById('data_checkout');
+    const datosReservados = {{ datas_reservadas | tojson }};
+    
+    // Plugin customizado para colorir datas reservadas
+    const disableDatesPlugin = function(fp) {
+        return {
+            onReady: function() {
+                const diasReservados = [];
+                datosReservados.forEach(res => {
+                    let data = new Date(res.checkin);
+                    while (data < new Date(res.checkout)) {
+                        diasReservados.push(new Date(data));
+                        data.setDate(data.getDate() + 1);
                     }
                 });
-                return disabled;
-            }
-
-            // Flatpickr Check-in
-            fpCheckin = flatpickr("#checkin", {
-                dateFormat: "Y-m-d",
-                minDate: dataHoje,
-                disable: disabledDates,
-                onChange: function(selectedDates) {
-                    if (selectedDates[0]) {
-                        fpCheckout.set('minDate', selectedDates[0]);
-                        calcularTotal();
-                        verificarOverlap();
+                
+                fp.days.querySelectorAll('.flatpickr-day').forEach(day => {
+                    const date = new Date(day.dateObj);
+                    if (diasReservados.some(d => d.toDateString() === date.toDateString())) {
+                        day.classList.add('reservado');
+                        day.style.pointerEvents = 'none';
                     }
-                },
-                onDayCreate: function(dObj, dStr, fp, dayElem) {
-                    if (disabledDates.some(date => date.toDateString() === dayElem.dateObj.toDateString())) {
-                        dayElem.classList.add('reservado');
-                    }
-                }
-            });
-
-            // Flatpickr Check-out
-            fpCheckout = flatpickr("#checkout", {
-                dateFormat: "Y-m-d",
-                minDate: dataHoje,
-                disable: disabledDates,
-                onChange: function(selectedDates) {
-                    if (selectedDates[0]) {
-                        calcularTotal();
-                        verificarOverlap();
-                    }
-                },
-                onDayCreate: function(dObj, dStr, fp, dayElem) {
-                    if (disabledDates.some(date => date.toDateString() === dayElem.dateObj.toDateString())) {
-                        dayElem.classList.add('reservado');
-                    }
-                }
-            });
-        }
-
-        // Atualizar preço e datas desabilitadas ao selecionar quarto
-        function atualizarPrecoEDatas() {
-            const select = document.getElementById('quartoSelect');
-            const selectedOption = select.options[select.selectedIndex];
-            precoQuarto = parseFloat(selectedOption ? selectedOption.getAttribute('data-preco') || 0 : 0);
-            quartoAtual = select.value;
-
-            // Atualizar datas desabilitadas
-            disabledDates = getDisabledDates(quartoAtual || 0);
-            if (fpCheckin) {
-                fpCheckin.set('disable', disabledDates);
-                fpCheckin.redraw();  // Reaplica coloração
-            }
-            if (fpCheckout) {
-                fpCheckout.set('disable', disabledDates);
-                fpCheckout.redraw();
-            }
-
-            calcularTotal();
-            document.getElementById('avisoOverlap').style.display = 'none';  // Reset aviso
-        }
-
-        // Calcular total estimado
-        function calcularTotal() {
-            const checkin = fpCheckin ? fpCheckin.selectedDates[0] : null;
-            const checkout = fpCheckout ? fpCheckout.selectedDates[0] : null;
-            const totalField = document.getElementById('totalEstimado');
-            if (checkin && checkout && precoQuarto > 0 && quartoAtual) {
-                const dias = (checkout - checkin) / (1000 * 60 * 60 * 24);
-                if (dias > 0) {
-                    const total = dias * precoQuarto;
-                    totalField.value = total.toFixed(2);
-                    return;
-                }
-            }
-            totalField.value = '';
-        }
-
-        // Verificar overlap e mostrar aviso
-        function verificarOverlap() {
-            const checkin = fpCheckin.selectedDates[0];
-            const checkout = fpCheckout.selectedDates[0];
-            const aviso = document.getElementById('avisoOverlap');
-            if (checkin && checkout && disabledDates.length > 0) {
-                const overlap = disabledDates.some(date => {
-                    return date >= checkin && date < checkout;
                 });
-                aviso.style.display = overlap ? 'block' : 'none';
-            } else {
-                aviso.style.display = 'none';
             }
-        }
+        };
+    };
+    
+    flatpickr(checkinInput, {
+        minDate: 'today',
+        dateFormat: 'Y-m-d',
+        plugins: [disableDatesPlugin(this)]
+    });
+    
+    flatpickr(checkoutInput, {
+        minDate: 'today',
+        dateFormat: 'Y-m-d',
+        plugins: [disableDatesPlugin(this)]
+    });
+});
 
-        // Validação no submit
-        document.getElementById('formReserva').addEventListener('submit', function(e) {
-            const checkinVal = document.getElementById('checkin').value;
-            const checkoutVal = document.getElementById('checkout').value;
-            if (checkinVal >= checkoutVal) {
-                alert('Data de check-out deve ser posterior ao check-in!');
-                e.preventDefault();
-            }
-            if (!quartoAtual) {
-                alert('Selecione um quarto!');
-                e.preventDefault();
-            }
-        });
-    </script>
+function limparModalReserva() {
+    document.getElementById('formReserva').reset();
+    document.getElementById('totalEstimado').textContent = 'Total Estimado: R$ 0,00';
+    document.getElementById('valor_hospedagem').textContent = 'R$ 0,00';
+    document.getElementById('valor_refeicoes').textContent = 'R$ 0,00';
+}
+
+function atualizarTotal() {
+    const numPessoas = parseInt(document.getElementById('num_pessoas').value) || 0;
+    const numCriancas = parseInt(document.getElementById('num_criancas').value) || 0;
+    const dataCheckin = document.getElementById('data_checkin').value;
+    const dataCheckout = document.getElementById('data_checkout').value;
+    
+    if (!dataCheckin || !dataCheckout || numPessoas === 0) return;
+    
+    // Calcular diárias
+    const checkin = new Date(dataCheckin);
+    const checkout = new Date(dataCheckout);
+    const dias = Math.ceil((checkout - checkin) / (1000 * 60 * 60 * 24));
+    
+    if (dias <= 0) return;
+    
+    // Calcular hospedagem
+    const adultos = numPessoas - numCriancas;
+    const valorHospedagem = dias * (adultos * PRECO_ADULTO + numCriancas * PRECO_CRIANCA);
+    
+    // Calcular refeições
+    const refeicoesSelecionadas = Array.from(document.querySelectorAll('input[name="refeicao"]:checked'))
+        .map(el => el.value);
+    
+    let valorRefeicoes = 0;
+    if (refeicoesSelecionadas.length > 0) {
+        const custoPorDia = refeicoesSelecionadas.reduce((sum, tipo) => sum + (PRECOS_REFEICOES[tipo] || 0), 0);
+        valorRefeicoes = dias * custoPorDia * numPessoas;
+    }
+    
+    const total = valorHospedagem + valorRefeicoes;
+    
+    // Atualizar display
+    document.getElementById('valor_hospedagem').textContent = 'R$ ' + valorHospedagem.toFixed(2).replace('.', ',');
+    document.getElementById('valor_refeicoes').textContent = 'R$ ' + valorRefeicoes.toFixed(2).replace('.', ',');
+    document.getElementById('totalEstimado').textContent = 'Total Estimado: R$ ' + total.toFixed(2).replace('.', ',');
+}
+
+function validarReserva() {
+    const numPessoas = parseInt(document.getElementById('num_pessoas').value);
+    const numCriancas = parseInt(document.getElementById('num_criancas').value);
+    
+    if (numCriancas > numPessoas) {
+        alert('Número de crianças não pode exceder o total de pessoas!');
+        return false;
+    }
+    
+    const dataCheckin = document.getElementById('data_checkin').value;
+    const dataCheckout = document.getElementById('data_checkout').value;
+    if (new Date(dataCheckin) >= new Date(dataCheckout)) {
+        alert('Data de check-out deve ser posterior ao check-in!');
+        return false;
+    }
+    
+    // Serializar refeições como JSON
+    const refeicoes = Array.from(document.querySelectorAll('input[name="refeicao"]:checked'))
+        .map(el => el.value);
+    
+    // Criar input hidden com JSON
+    let refeicoesInput = document.getElementById('refeicoes_json');
+    if (!refeicoesInput) {
+        refeicoesInput = document.createElement('input');
+        refeicoesInput.type = 'hidden';
+        refeicoesInput.id = 'refeicoes_json';
+        refeicoesInput.name = 'refeicoes';
+        document.getElementById('formReserva').appendChild(refeicoesInput);
+    }
+    refeicoesInput.value = JSON.stringify(refeicoes);
+    
+    return true;
+}
+</script>
 {% endblock %}
