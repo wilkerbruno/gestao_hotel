@@ -340,6 +340,38 @@ def financeiro():
     return render_template('financeiro.html', ganhos=ganhos, gastos_mensais=gastos_mensais, gastos_avulsos=gastos_avulsos,
                            reservas=reservas, categorias=CATEGORIAS_GASTOS, data_hoje=data_hoje)
 
+@app.route('/configuracoes', methods=['GET', 'POST'])
+@login_required
+def configuracoes():
+    if request.method == 'POST':
+        try:
+            # Atualizar preços de hospedagem
+            if 'preco_adulto' in request.form:
+                global PRECO_ADULTO, PRECO_CRIANCA, PRECOS_REFEICOES
+                
+                PRECO_ADULTO = float(request.form.get('preco_adulto', 150.0))
+                PRECO_CRIANCA = float(request.form.get('preco_crianca', 80.0))
+                
+                # Atualizar preços de refeições
+                PRECOS_REFEICOES['cafe'] = float(request.form.get('preco_cafe', 20.0))
+                PRECOS_REFEICOES['almoco'] = float(request.form.get('preco_almoco', 30.0))
+                PRECOS_REFEICOES['janta'] = float(request.form.get('preco_janta', 25.0))
+                
+                flash('Configurações atualizadas com sucesso!', 'success')
+            
+        except ValueError:
+            flash('Valores inválidos! Use apenas números.', 'error')
+        except Exception as e:
+            flash(f'Erro ao atualizar configurações: {str(e)}', 'error')
+        
+        return redirect(url_for('configuracoes'))
+    
+    # GET: Exibir página de configurações
+    return render_template('configuracoes.html',
+                           preco_adulto=PRECO_ADULTO,
+                           preco_crianca=PRECO_CRIANCA,
+                           precos_refeicoes=PRECOS_REFEICOES)
+
 @app.route('/relatorios/financeiro')
 @login_required
 def relatorios_financeiro():
