@@ -70,10 +70,13 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        # Credenciais fixas (exemplo; substitua por DB se quiser)
-        if username == 'admin' and password == 'admin123':
-            session['user_id'] = 1  # Define session só após sucesso
-            session['username'] = username
+        # Busca o usuário no banco de dados
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password_hash, password):
+            # Login bem-sucedido
+            session['user_id'] = user.id
+            session['username'] = user.username
             flash('Login realizado com sucesso!', 'success')
             return redirect(url_for('dashboard'))
         else:
